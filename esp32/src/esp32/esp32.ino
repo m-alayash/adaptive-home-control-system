@@ -23,6 +23,8 @@ String clean(String s) {
 
 
 void setup() {
+  // so serial monitor doesn't freak out
+  delay(1000);
   Serial.begin(115200);
   Serial1.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
 
