@@ -1,8 +1,6 @@
-lpc1768/CMSIS_CORE_LPC17xx/.settings/org.eclipse.core.resources.prefs
-/lpc1768/AzureRTOS_TAD_logs
-/lpc1768/FreeRTOS_TAD_logs
-/lpc1768/ZephyrRTOS_TAD_logs
-lpc1768/control_sense/control_sense LinkServer Debug.launch
-lpc1768/control_sense/control_sense LinkServer Debug.launch
-lpc1768/control_sense/control_sense LinkServer Debug.launch
-lpc1768/control_sense/control_sense LinkServer Debug.launch
+lpc1768/CMSIS_CORE_LPC17xx/
+lpc1768/ZephyrRTOS_TAD_logs
+lpc1768/FreeRTOS_TAD_logs
+lpc1768/AzureRTOS_TAD_logs
+lpc1768/.metadata
+lpc1768/.mcuxpressoide_packages_support
