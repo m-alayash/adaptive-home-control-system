@@ -5,7 +5,7 @@
 - LPC1768 (Control logic)
 
 ## Features
-- Displays temp and humd in real-time
+- Displays temperature and humidity in real-time
 
 ## Setup
 Instructions coming soon
