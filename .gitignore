@@ -306,3 +306,4 @@ lpc1768/src/ocf_lpc176x_lib.h
 lpc1768/src/main.c
 lpc1768/src/ocf_lpc176x_lib.c
 lpc1768/src/ocf_lpc176x_lib.h
+lpc1768/adaptive-home-control-system/src/ocf_lpc176x_lib.c
