@@ -1,6 +1,3 @@
-#ifndef WEBSITE_H
-#define WEBSITE_H
-
 const char PAGE_DATA[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
@@ -15,6 +12,10 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         .card { background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; display: inline-block; margin: 10px; min-width: 160px; border: 1px solid #334155; }
         .val { font-size: 40px; color: #00d2ff; font-weight: bold; }
         .chart-box { max-width: 700px; margin: 20px auto; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 15px; border: 1px solid #334155; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { color: #94a3b8; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #334155; }
+        td { padding: 10px; border-bottom: 1px solid #1e293b; }
+        .log-container { max-width: 700px; margin: 20px auto; }
     </style>
 </head>
 <body>
@@ -23,6 +24,16 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         <div class="card"><div>TEMPERATURE</div><div class="val" id="t">--</div>&deg;C</div>
         <div class="card"><div>HUMIDITY</div><div class="val" id="h">--</div>%</div>
         <div class="chart-box"><canvas id="myChart"></canvas></div>
+        
+        <div class="log-container">
+            <h3>24-HOUR HISTORY (HOURLY AVG)</h3>
+            <div class="card" style="width:100%; display:block;">
+                <table>
+                    <thead><tr><th>Hour</th><th>Temp</th><th>Humidity</th></tr></thead>
+                    <tbody id="logBody"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
     <script>
         var lbls=[], tPts=[], hPts=[];
@@ -35,6 +46,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             ]},
             options: { scales: { x: { display: false }, y: { grid: { color: '#334155' } } }, plugins: { legend: { labels: { color: 'white' } } } }
         });
+
         function fetchData() {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('t').innerHTML = d.t;
@@ -42,12 +54,23 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 if(lbls.length > 20) { lbls.shift(); tPts.shift(); hPts.shift(); }
                 lbls.push(""); tPts.push(parseFloat(d.t)); hPts.push(parseFloat(d.h));
                 chart.update('none');
-            }).catch(err => console.error(err));
+            });
         }
+
+        function fetchHistory() {
+            fetch('/history').then(r => r.json()).then(data => {
+                let html = "";
+                data.reverse().forEach(row => {
+                    html += `<tr><td>${row.hr}:00</td><td>${row.t.toFixed(1)}°C</td><td>${row.h.toFixed(1)}%</td></tr>`;
+                });
+                document.getElementById('logBody').innerHTML = html;
+            });
+        }
+
         setInterval(fetchData, 2000);
+        setInterval(fetchHistory, 60000); // Update log table every minute
+        fetchHistory(); // Initial load
     </script>
 </body>
 </html>
 )=====";
-
-#endif
