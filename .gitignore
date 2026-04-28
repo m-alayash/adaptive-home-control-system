@@ -303,3 +303,6 @@ lpc1768/CMSIS_CORE_LPC17xx/Debug/src/system_LPC17xx.o
 lpc1768/CMSIS_CORE_LPC17xx/Debug/src/system_LPC17xx.su
 lpc1768/src/ocf_lpc176x_lib.c
 lpc1768/src/ocf_lpc176x_lib.h
+lpc1768/src/main.c
+lpc1768/src/ocf_lpc176x_lib.c
+lpc1768/src/ocf_lpc176x_lib.h
