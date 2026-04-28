@@ -2,8 +2,8 @@
 #include <WebServer.h>
 #include "website.h"
 extern const char PAGE_DATA[];
-const char* ssid = "Cake";
-const char* password = "Ayash2015";
+const char* ssid = "HONOR-10AP1K";
+const char* password = "0503844860";
 
 #define RX_PIN 18 
 #define TX_PIN 17 
