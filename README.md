@@ -12,5 +12,5 @@ Instructions coming soon
 
 ## Acknowledgements
 
-This project uses code from [[OCFreaks](https://github.com/OCFreaks/LPC1768-Tutorial-Examples)]
+This project uses code from [OCFreaks](https://github.com/OCFreaks/LPC1768-Tutorial-Examples)
 licensed under the GNU GPL v3.
