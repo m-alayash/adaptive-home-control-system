@@ -8,3 +8,4 @@ lpc1768/.mcuxpressoide_packages_support/control_sense/.settings/
 lpc1768/.mcuxpressoide_packages_support/control_sense/Debug/
 lpc1768/.mcuxpressoide_packages_support/control_sense/control_sense LinkServer Debug.launch
 lpc1768/control_sense/control_sense LinkServer Debug.launch
+lpc1768/control_sense/.cproject
