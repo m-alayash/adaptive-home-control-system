@@ -10,7 +10,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         body { background: #0f172a; color: white; font-family: sans-serif; text-align: center; margin: 0; }
         .container { padding: 20px; }
         .card { background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; display: inline-block; margin: 10px; min-width: 160px; border: 1px solid #334155; }
-        .val { font-size: 40px; color: #00d2ff; font-weight: bold; }
+        .val { font-size: 40px; color: #00d2ff; font-weight: bold; transition: color 0.5s; }
         .chart-box { max-width: 700px; margin: 20px auto; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 15px; border: 1px solid #334155; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th { color: #94a3b8; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #334155; }
@@ -47,12 +47,26 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             options: { scales: { x: { display: false }, y: { grid: { color: '#334155' } } }, plugins: { legend: { labels: { color: 'white' } } } }
         });
 
+        // Helper function to pick color based on Temp
+        function getTempColor(temp) {
+            if (temp >= 30) return "#ff4b2b"; // Red
+            if (temp >= 20) return "#2ecc71"; // Green
+            return "#3498db";                // Blue
+        }
+
         function fetchData() {
             fetch('/data').then(r => r.json()).then(d => {
-                document.getElementById('t').innerHTML = d.t;
+                const tVal = parseFloat(d.t);
+                const tElem = document.getElementById('t');
+                
+                // Update Value and Color
+                tElem.innerHTML = d.t;
+                tElem.style.color = getTempColor(tVal);
+                
                 document.getElementById('h').innerHTML = d.h;
+
                 if(lbls.length > 20) { lbls.shift(); tPts.shift(); hPts.shift(); }
-                lbls.push(""); tPts.push(parseFloat(d.t)); hPts.push(parseFloat(d.h));
+                lbls.push(""); tPts.push(tVal); hPts.push(parseFloat(d.h));
                 chart.update('none');
             });
         }
@@ -61,15 +75,20 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             fetch('/history').then(r => r.json()).then(data => {
                 let html = "";
                 data.reverse().forEach(row => {
-                    html += `<tr><td>${row.hr}:00</td><td>${row.t.toFixed(1)}°C</td><td>${row.h.toFixed(1)}%</td></tr>`;
+                    const rowColor = getTempColor(row.t);
+                    html += `<tr>
+                                <td>${row.hr}:00</td>
+                                <td style="color:${rowColor}; font-weight:bold;">${row.t.toFixed(1)}°C</td>
+                                <td>${row.h.toFixed(1)}%</td>
+                             </tr>`;
                 });
                 document.getElementById('logBody').innerHTML = html;
             });
         }
 
         setInterval(fetchData, 2000);
-        setInterval(fetchHistory, 60000); // Update log table every minute
-        fetchHistory(); // Initial load
+        setInterval(fetchHistory, 60000);
+        fetchHistory();
     </script>
 </body>
 </html>
