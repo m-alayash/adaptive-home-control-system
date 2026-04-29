@@ -50,8 +50,9 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         // Helper function to pick color based on Temp
         function getTempColor(temp) {
             if (temp >= 30) return "#ff4b2b"; // Red
+            if (temp >= 28) return "#F28C28"; // Orange 
             if (temp >= 20) return "#2ecc71"; // Green
-            return "#3498db";                // Blue
+            return "#3498db";                 // Blue
         }
 
         function fetchData() {
