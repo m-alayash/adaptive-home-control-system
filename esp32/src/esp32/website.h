@@ -109,8 +109,8 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 animation: false,
                 scales: {
                     x: {
-                        display: false,
-                        ticks: { color: '#cbd5e1' },
+                        display: true,
+                        ticks: { color: '#cbd5e1', maxRotation: 0,  autoSkip: true, maxTicksLimit: 6 },
                         grid: { color: '#334155' }
                     },
                     y: {
@@ -149,14 +149,17 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                         tElem.style.color = getTempColor(tVal);
                     }
 
-                    if (!isNaN(tVal) && !isNaN(hVal)) {
+                    if (!isNaN(tVal) && !isNaN(hVal)) {     
                         if (lbls.length > 20) {
                             lbls.shift();
                             tPts.shift();
                             hPts.shift();
                         }
 
-                        lbls.push("");
+                        lbls.push(new Date().toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        }));
                         tPts.push(tVal);
                         hPts.push(hVal);
                         chart.update('none');
