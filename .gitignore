@@ -14,3 +14,10 @@ lpc1768/.project
 /lpc1768/.mcuxpressoide_packages_support
 lpc1768/control_sense/.cproject
 lpc1768/control_sense/.settings/language.settings.xml
+lpc1768/.mcuxpressoide_packages_support/info.properties
+*.properties
+lpc1768/control_sense/.cproject
+lpc1768/control_sense/.settings/language.settings.xml
+lpc1768/control_sense/.settings/language.settings.xml
+lpc1768/control_sense/.cproject
+lpc1768/.mcuxpressoide_packages_support/info.properties
