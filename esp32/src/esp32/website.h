@@ -9,6 +9,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
     <style>
         body { background: #0f172a; color: white; font-family: sans-serif; text-align: center; margin: 0; }
         .container { padding: 20px; }
+        .status-grid { display: flex; justify-content: center; align-items: stretch; gap: 20px; flex-wrap: wrap; margin: 20px 0; }
         .card {
             background: rgba(255,255,255,0.05);
             border-radius: 15px;
@@ -20,7 +21,15 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             box-sizing: border-box;
             border: 1px solid #334155;
         }
+        .status-grid .card { width: 220px; min-height: 150px; }
         .val { font-size: 40px; color: #00d2ff; font-weight: bold; transition: color 0.5s; }
+
+        .subtext {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
         .chart-box {
             max-width: 700px;
             margin: 20px auto;
@@ -42,14 +51,22 @@ const char PAGE_DATA[] PROGMEM = R"=====(
     <div class="container">
         <h1>Adaptive Home Control System</h1>
 
-        <div class="card">
-            <div>TEMPERATURE</div>
-            <div class="val" id="t">--</div>&deg;C
-        </div>
+        <div class="status-grid">
+            <div class="card">
+                <div>TEMPERATURE</div>
+                <div class="val" id="t">--</div>&deg;C
+            </div>
 
-        <div class="card">
-            <div>HUMIDITY</div>
-            <div class="val" id="h">--</div>%
+            <div class="card">
+                <div>HUMIDITY</div>
+                <div class="val" id="h">--</div>%
+            </div>
+
+            <div class="card">
+                <div>MOTION</div>
+                <div class="val" id="m">--</div>
+                <div class="subtext" id="lastMotion">Last: Never</div>
+            </div>
         </div>
 
         <div class="chart-box">
@@ -65,11 +82,12 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                             <th>Hour</th>
                             <th>Temp</th>
                             <th>Humidity</th>
+                            <th>Motion</th>
                         </tr>
                     </thead>
                     <tbody id="logBody">
                         <tr>
-                            <td colspan="3" class="empty-row">No history yet</td>
+                            <td colspan="4" class="empty-row">No history yet</td>
                         </tr>
                     </tbody>
                 </table>
@@ -110,7 +128,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 scales: {
                     x: {
                         display: true,
-                        ticks: { color: '#cbd5e1', maxRotation: 0,  autoSkip: true, maxTicksLimit: 6 },
+                        ticks: { color: '#cbd5e1', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
                         grid: { color: '#334155' }
                     },
                     y: {
@@ -141,6 +159,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                     const hVal = parseFloat(d.h);
                     const tElem = document.getElementById('t');
                     const hElem = document.getElementById('h');
+                    const mElem = document.getElementById('m');
 
                     tElem.innerHTML = isNaN(tVal) ? "--" : d.t;
                     hElem.innerHTML = isNaN(hVal) ? "--" : d.h;
@@ -149,7 +168,17 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                         tElem.style.color = getTempColor(tVal);
                     }
 
-                    if (!isNaN(tVal) && !isNaN(hVal)) {     
+                    if (d.m === "1") {
+                        mElem.innerHTML = "YES";
+                        mElem.style.color = "#ff4b2b";
+                    } else {
+                        mElem.innerHTML = "NO";
+                        mElem.style.color = "#2ecc71";
+                    }
+                    
+                    document.getElementById('lastMotion').innerHTML = 'Last: ' + d.lastMotion;
+
+                    if (!isNaN(tVal) && !isNaN(hVal)) {
                         if (lbls.length > 20) {
                             lbls.shift();
                             tPts.shift();
@@ -160,6 +189,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                             hour: '2-digit',
                             minute: '2-digit'
                         }));
+
                         tPts.push(tVal);
                         hPts.push(hVal);
                         chart.update('none');
@@ -173,7 +203,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 .then(data => {
                     if (data.length === 0) {
                         document.getElementById('logBody').innerHTML =
-                            '<tr><td colspan="3" class="empty-row">No history yet</td></tr>';
+                            '<tr><td colspan="4" class="empty-row">No history yet</td></tr>';
                         return;
                     }
 
@@ -186,6 +216,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                                     <td>${row.hr}:00</td>
                                     <td style="color:${rowColor}; font-weight:bold;">${row.t.toFixed(1)}&deg;C</td>
                                     <td>${row.h.toFixed(1)}%</td>
+                                    <td>${row.m}</td>
                                  </tr>`;
                     });
 

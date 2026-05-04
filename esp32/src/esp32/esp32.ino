@@ -1,9 +1,9 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include <FS.h>
+#include <LittleFS.h>
 #include "time.h"
 #include "website.h"
-#include <LittleFS.h>
-
 
 const char* ssid = "HONOR-10AP1K";
 const char* password = "0503844860";
@@ -17,12 +17,13 @@ const int daylightOffset_sec = 0;
 #define TX_PIN 17
 
 WebServer server(80);
-String temp = "0", hum = "0";
+String temp = "0", hum = "0", motion = "0";
 
 // Logging Variables
 struct HourlyData {
   float avgTemp = 0;
   float avgHum = 0;
+  int motionCount = 0;
   int hour = -1;
   bool active = false;
 };
@@ -33,6 +34,9 @@ int readingCount = 0;
 int lastHour = -1;
 int lastDay = -1;
 int savedHistoryDay = -1;
+int motionCount = 0;
+int lastMotionState = 0;
+String lastMotionTime = "Never";
 
 String clean(String s) {
   String out = "";
@@ -42,10 +46,23 @@ String clean(String s) {
   return out;
 }
 
+String getField(String line, String key) {
+  int start = line.indexOf(key);
+  if (start == -1) return "";
+
+  start += key.length();
+
+  int end = line.indexOf(",", start);
+  if (end == -1) end = line.length();
+
+  return clean(line.substring(start, end));
+}
+
 void clearHistory() {
   for (int i = 0; i < 24; i++) {
     history[i].avgTemp = 0;
     history[i].avgHum = 0;
+    history[i].motionCount = 0;
     history[i].hour = -1;
     history[i].active = false;
   }
@@ -57,19 +74,26 @@ void saveHistory(int day) {
 
   file.print("{\"day\":");
   file.print(day);
-  file.print(",\"data\":[");
+  file.print(",\"lastMotion\":\"");
+  file.print(lastMotionTime);
+  file.print("\",\"data\":[");
+
 
   bool first = true;
   for (int i = 0; i < 24; i++) {
     if (history[i].active) {
       if (!first) file.print(",");
+
       file.print("{\"hr\":");
       file.print(history[i].hour);
       file.print(",\"t\":");
       file.print(history[i].avgTemp, 1);
       file.print(",\"h\":");
       file.print(history[i].avgHum, 1);
+      file.print(",\"m\":");
+      file.print(history[i].motionCount);
       file.print("}");
+
       first = false;
     }
   }
@@ -87,6 +111,18 @@ int getJsonInt(String obj, String key) {
   if (end == -1) end = obj.indexOf("}", start);
 
   return obj.substring(start, end).toInt();
+}
+
+String getJsonString(String obj, String key) {
+  int start = obj.indexOf(key);
+  if (start == -1) return "";
+
+  start += key.length();
+
+  int end = obj.indexOf("\"", start);
+  if (end == -1) return "";
+
+  return obj.substring(start, end);
 }
 
 float getJsonFloat(String obj, String key) {
@@ -111,6 +147,11 @@ void loadHistory() {
 
   savedHistoryDay = getJsonInt(json, "\"day\":");
 
+  String savedLastMotion = getJsonString(json, "\"lastMotion\":\"");
+  if (savedLastMotion != "") {
+    lastMotionTime = savedLastMotion;
+  }
+
   int pos = 0;
   while (true) {
     int start = json.indexOf("{\"hr\":", pos);
@@ -124,11 +165,14 @@ void loadHistory() {
     int hr = getJsonInt(obj, "\"hr\":");
     float t = getJsonFloat(obj, "\"t\":");
     float h = getJsonFloat(obj, "\"h\":");
+    int m = getJsonInt(obj, "\"m\":");
+    if (m < 0) m = 0;
 
     if (hr >= 0 && hr < 24) {
       history[hr].hour = hr;
       history[hr].avgTemp = t;
       history[hr].avgHum = h;
+      history[hr].motionCount = m;
       history[hr].active = true;
     }
 
@@ -153,7 +197,6 @@ void setup() {
     Serial.print(".");
   }
 
-  // Sync Time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   server.on("/", []() {
@@ -161,21 +204,24 @@ void setup() {
   });
 
   server.on("/data", []() {
-    String json = "{\"t\":\"" + clean(temp) + "\",\"h\":\"" + clean(hum) + "\"}";
+    String json = "{\"t\":\"" + clean(temp) + "\",\"h\":\"" + clean(hum) + "\",\"m\":\"" + motion + "\",\"lastMotion\":\"" + lastMotionTime + "\"}";
     server.send(200, "application/json", json);
   });
 
-  // New endpoint for the hourly log
   server.on("/history", []() {
     String json = "[";
     bool first = true;
+
     for (int i = 0; i < 24; i++) {
       if (history[i].active) {
         if (!first) json += ",";
-        json += "{\"hr\":" + String(history[i].hour) + ",\"t\":" + String(history[i].avgTemp) + ",\"h\":" + String(history[i].avgHum) + "}";
+
+        json += "{\"hr\":" + String(history[i].hour) + ",\"t\":" + String(history[i].avgTemp) + ",\"h\":" + String(history[i].avgHum) + ",\"m\":" + String(history[i].motionCount) + "}";
+
         first = false;
       }
     }
+
     json += "]";
     server.send(200, "application/json", json);
   });
@@ -189,12 +235,18 @@ void loop() {
 
   if (Serial1.available()) {
     String line = Serial1.readStringUntil('\n');
-    int hIdx = line.indexOf("H:");
-    int tIdx = line.indexOf("T:");
 
-    if (hIdx != -1 && tIdx != -1) {
-      hum = clean(line.substring(hIdx + 2, line.indexOf(",", hIdx)));
-      temp = clean(line.substring(tIdx + 2));
+    String newHum = getField(line, "H:");
+    String newTemp = getField(line, "T:");
+    String newMotion = getField(line, "M:");
+
+    if (newMotion != "") {
+      motion = newMotion;
+    }
+
+    if (newHum != "" && newTemp != "") {
+      hum = newHum;
+      temp = newTemp;
 
       struct tm timeinfo;
       if (getLocalTime(&timeinfo)) {
@@ -210,20 +262,19 @@ void loop() {
           }
         }
 
-        // Reset 24-hour history at 00:00 once per new day
         if (currentHour == 0 && currentDay != lastDay) {
           clearHistory();
 
           currentHourSumT = 0;
           currentHourSumH = 0;
           readingCount = 0;
+          motionCount = 0;
           lastHour = currentHour;
           lastDay = currentDay;
 
           saveHistory(currentDay);
         }
 
-        // If it's a brand new hour, save the previous hour and reset counters
         if (currentHour != lastHour) {
           if (lastHour != -1) {
             saveHistory(currentDay);
@@ -232,6 +283,7 @@ void loop() {
           currentHourSumT = 0;
           currentHourSumH = 0;
           readingCount = 0;
+          motionCount = 0;
           lastHour = currentHour;
         }
 
@@ -239,8 +291,23 @@ void loop() {
         currentHourSumH += hum.toFloat();
         readingCount++;
 
+        int currentMotionState = motion.toInt();
+
+        if (currentMotionState == 1 && lastMotionState == 0) {
+          motionCount++;
+
+          char timeText[32];
+          strftime(timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S", &timeinfo);
+          lastMotionTime = String(timeText);
+
+          saveHistory(currentDay);
+        }
+
+        lastMotionState = currentMotionState;
+
         history[currentHour].avgTemp = currentHourSumT / readingCount;
         history[currentHour].avgHum = currentHourSumH / readingCount;
+        history[currentHour].motionCount = motionCount;
         history[currentHour].hour = currentHour;
         history[currentHour].active = true;
       }

@@ -3,6 +3,8 @@
 #include "ocf_lpc176x_lib.h"
 
 #define DATA_PIN (1 << 0)
+#define PIR_PIN (1 << 5)   // P2.5
+
 
 // Function prototypes
 void DHT11_Start(void);
@@ -18,11 +20,15 @@ int main(void)
     // Ensure P0.0 is GPIO
     LPC_PINCON->PINSEL0 &= ~(3 << 0);
 
+    // Ensure P2.5 is GPIO
+    LPC_PINCON->PINSEL4 &= ~(3 << 10);
+    LPC_GPIO2->FIODIR &= ~PIR_PIN;
+
     initUART0();
     initTimer0();
     initUART2();
 
-    printf("DHT11 LPC1768 Stable Version\n");
+    printf("Readings:\n");
 
     delayMS(1000); // sensor stabilization
 
@@ -41,11 +47,13 @@ int main(void)
                 if((unsigned char)(hum_int + hum_dec + temp_int + temp_dec) == checksum)
                 {
                     // Print to PC Terminal (UART0)
-                    printf("Humidity = %d%%  Temp = %d C\n", hum_int, temp_int);
+                    int motion = (LPC_GPIO2->FIOPIN & PIR_PIN) ? 1 : 0;
+
+                    printf("Humidity = %d%%  Temp = %d C Motion = %d\n", hum_int, temp_int, motion);
 
                     // Prepare and send data to ESP32 (UART2)
                     char esp_buffer[32];
-                    sprintf(esp_buffer, "H:%d,T:%d\n", hum_int, temp_int);
+                    sprintf(esp_buffer, "H:%d,T:%d,M:%d\n", hum_int, temp_int, motion);
                     U2WriteStr(esp_buffer);
                 }
                 else
