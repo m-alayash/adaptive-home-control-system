@@ -2,13 +2,13 @@
 #include <stdio.h>
 #include "ocf_lpc176x_lib.h"
 
-#define DATA_PIN (1<<0)
+#define DATA_PIN (1 << 0)
 
 // Function prototypes
 void DHT11_Start(void);
 int  DHT11_CheckResponse(void);
 int  DHT11_ReadBit(void);
-unsigned char DHT11_ReadByte(void);
+int  DHT11_ReadByte(unsigned char *byte);
 
 // ================= MAIN =================
 int main(void)
@@ -32,27 +32,32 @@ int main(void)
 
         if(DHT11_CheckResponse())
         {
-            hum_int  = DHT11_ReadByte();
-            hum_dec  = DHT11_ReadByte();
-            temp_int = DHT11_ReadByte();
-            temp_dec = DHT11_ReadByte();
-            checksum = DHT11_ReadByte();
-
-            if((hum_int + hum_dec + temp_int + temp_dec) == checksum)
+            if(DHT11_ReadByte(&hum_int) &&
+               DHT11_ReadByte(&hum_dec) &&
+               DHT11_ReadByte(&temp_int) &&
+               DHT11_ReadByte(&temp_dec) &&
+               DHT11_ReadByte(&checksum))
             {
-                // Print to PC Terminal (UART0)
-                printf("Humidity = %d%%  Temp = %d C\n", hum_int, temp_int);
+                if((unsigned char)(hum_int + hum_dec + temp_int + temp_dec) == checksum)
+                {
+                    // Print to PC Terminal (UART0)
+                    printf("Humidity = %d%%  Temp = %d C\n", hum_int, temp_int);
 
-                // Prepare and send data to ESP32 (UART2)
-                char esp_buffer[32];
-                // Formatting as "H:xx,T:xx" followed by a newline for easy ESP32 parsing
-                sprintf(esp_buffer, "H:%d,T:%d\n", hum_int, temp_int);
-                U2WriteStr(esp_buffer);
+                    // Prepare and send data to ESP32 (UART2)
+                    char esp_buffer[32];
+                    sprintf(esp_buffer, "H:%d,T:%d\n", hum_int, temp_int);
+                    U2WriteStr(esp_buffer);
+                }
+                else
+                {
+                    printf("Checksum error\n");
+                    U2WriteStr("ERROR: Checksum\n");
+                }
             }
             else
             {
-                printf("Checksum error\n");
-                U2WriteStr("ERROR: Checksum\n");
+                printf("Read timeout\n");
+                U2WriteStr("ERROR: Read Timeout\n");
             }
         }
         else
@@ -79,15 +84,13 @@ void DHT11_Start(void)
     delayUS(40);
 
     LPC_GPIO0->FIODIR &= ~DATA_PIN;
-    LPC_GPIO0->FIOSET = DATA_PIN;
 }
-
 
 int DHT11_CheckResponse(void)
 {
     int timeout = 0;
 
-    // LOW response
+    // Wait for sensor LOW response
     while(LPC_GPIO0->FIOPIN & DATA_PIN)
     {
         delayUS(1);
@@ -96,7 +99,7 @@ int DHT11_CheckResponse(void)
 
     timeout = 0;
 
-    // HIGH response
+    // Wait for sensor HIGH response
     while(!(LPC_GPIO0->FIOPIN & DATA_PIN))
     {
         delayUS(1);
@@ -105,7 +108,7 @@ int DHT11_CheckResponse(void)
 
     timeout = 0;
 
-    // LOW before data
+    // Wait for LOW before data bits
     while(LPC_GPIO0->FIOPIN & DATA_PIN)
     {
         delayUS(1);
@@ -120,7 +123,7 @@ int DHT11_ReadBit(void)
     int timeout = 0;
     unsigned int time = 0;
 
-    // Wait for LOW (start of bit)
+    // Wait for HIGH pulse to start
     while(!(LPC_GPIO0->FIOPIN & DATA_PIN))
     {
         delayUS(1);
@@ -137,26 +140,32 @@ int DHT11_ReadBit(void)
 
     time = stopTimer0();
 
-    // Threshold decision
+    // Around 26-28us = 0, around 70us = 1
     if(time > 40)
         return 1;
     else
         return 0;
 }
 
-
-
-unsigned char DHT11_ReadByte(void)
+int DHT11_ReadByte(unsigned char *byte)
 {
-    unsigned char i, byte = 0;
+    unsigned char i;
+    int bit;
+
+    *byte = 0;
 
     for(i = 0; i < 8; i++)
     {
-        byte <<= 1;
+        bit = DHT11_ReadBit();
 
-        if(DHT11_ReadBit())
-            byte |= 1;
+        if(bit < 0)
+            return 0;
+
+        *byte <<= 1;
+
+        if(bit)
+            *byte |= 1;
     }
 
-    return byte;
+    return 1;
 }
