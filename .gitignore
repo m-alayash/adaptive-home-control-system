@@ -10,3 +10,7 @@ lpc1768/.mcuxpressoide_packages_support/control_sense/control_sense LinkServer D
 lpc1768/control_sense/control_sense LinkServer Debug.launch
 lpc1768/control_sense/.cproject
 /lpc1768/CMSIS_CORE_LPC17xx
+lpc1768/.project
+/lpc1768/.mcuxpressoide_packages_support
+lpc1768/control_sense/.cproject
+lpc1768/control_sense/.settings/language.settings.xml
