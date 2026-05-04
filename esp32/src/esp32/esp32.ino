@@ -3,6 +3,7 @@
 #include "time.h"
 #include "website.h"
 
+
 const char* ssid = "HONOR-10AP1K";
 const char* password = "0503844860";
 
@@ -29,6 +30,7 @@ HourlyData history[24];
 float currentHourSumT = 0, currentHourSumH = 0;
 int readingCount = 0;
 int lastHour = -1;
+int lastDay = -1;
 
 String clean(String s) {
   String out = "";
@@ -92,10 +94,27 @@ void loop() {
       hum = clean(line.substring(hIdx + 2, line.indexOf(",", hIdx)));
       temp = clean(line.substring(tIdx + 2));
 
-      // Get current hour
       struct tm timeinfo;
       if (getLocalTime(&timeinfo)) {
         int currentHour = timeinfo.tm_hour;
+        int currentDay = timeinfo.tm_yday;
+
+        // Reset 24-hour history at 00:00 once per new day
+        if (currentHour == 0 && currentDay != lastDay) {
+          for (int i = 0; i < 24; i++) {
+            history[i].avgTemp = 0;
+            history[i].avgHum = 0;
+            history[i].hour = -1;
+            history[i].active = false;
+          }
+
+          currentHourSumT = 0;
+          currentHourSumH = 0;
+          readingCount = 0;
+          lastHour = currentHour;
+        }
+
+        lastDay = currentDay;
 
         // If it's a brand new hour, reset the counters
         if (currentHour != lastHour) {
@@ -110,31 +129,11 @@ void loop() {
         currentHourSumH += hum.toFloat();
         readingCount++;
 
-        // Update the history slot IMMEDIATELY (Average so far)
+        // Update the current hour average
         history[currentHour].avgTemp = currentHourSumT / readingCount;
         history[currentHour].avgHum = currentHourSumH / readingCount;
         history[currentHour].hour = currentHour;
         history[currentHour].active = true;
-      }
-    }
-
-    // Check if hour changed
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo)) {
-      int currentHour = timeinfo.tm_hour;
-      if (currentHour != lastHour) {
-        if (lastHour != -1 && readingCount > 0) {
-          // Save the average of the hour that just finished
-          history[lastHour].avgTemp = currentHourSumT / readingCount;
-          history[lastHour].avgHum = currentHourSumH / readingCount;
-          history[lastHour].hour = lastHour;
-          history[lastHour].active = true;
-        }
-        // Reset for new hour
-        lastHour = currentHour;
-        currentHourSumT = 0;
-        currentHourSumH = 0;
-        readingCount = 0;
       }
     }
   }
