@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include "time.h"
 #include "website.h"
+#include <LittleFS.h>
 
 
 const char* ssid = "HONOR-10AP1K";
@@ -31,6 +32,7 @@ float currentHourSumT = 0, currentHourSumH = 0;
 int readingCount = 0;
 int lastHour = -1;
 int lastDay = -1;
+int savedHistoryDay = -1;
 
 String clean(String s) {
   String out = "";
@@ -40,10 +42,110 @@ String clean(String s) {
   return out;
 }
 
+void clearHistory() {
+  for (int i = 0; i < 24; i++) {
+    history[i].avgTemp = 0;
+    history[i].avgHum = 0;
+    history[i].hour = -1;
+    history[i].active = false;
+  }
+}
+
+void saveHistory(int day) {
+  File file = LittleFS.open("/history.json", "w");
+  if (!file) return;
+
+  file.print("{\"day\":");
+  file.print(day);
+  file.print(",\"data\":[");
+
+  bool first = true;
+  for (int i = 0; i < 24; i++) {
+    if (history[i].active) {
+      if (!first) file.print(",");
+      file.print("{\"hr\":");
+      file.print(history[i].hour);
+      file.print(",\"t\":");
+      file.print(history[i].avgTemp, 1);
+      file.print(",\"h\":");
+      file.print(history[i].avgHum, 1);
+      file.print("}");
+      first = false;
+    }
+  }
+
+  file.print("]}");
+  file.close();
+}
+
+int getJsonInt(String obj, String key) {
+  int start = obj.indexOf(key);
+  if (start == -1) return -1;
+  start += key.length();
+
+  int end = obj.indexOf(",", start);
+  if (end == -1) end = obj.indexOf("}", start);
+
+  return obj.substring(start, end).toInt();
+}
+
+float getJsonFloat(String obj, String key) {
+  int start = obj.indexOf(key);
+  if (start == -1) return 0;
+  start += key.length();
+
+  int end = obj.indexOf(",", start);
+  if (end == -1) end = obj.indexOf("}", start);
+
+  return obj.substring(start, end).toFloat();
+}
+
+void loadHistory() {
+  if (!LittleFS.exists("/history.json")) return;
+
+  File file = LittleFS.open("/history.json", "r");
+  if (!file) return;
+
+  String json = file.readString();
+  file.close();
+
+  savedHistoryDay = getJsonInt(json, "\"day\":");
+
+  int pos = 0;
+  while (true) {
+    int start = json.indexOf("{\"hr\":", pos);
+    if (start == -1) break;
+
+    int end = json.indexOf("}", start);
+    if (end == -1) break;
+
+    String obj = json.substring(start, end + 1);
+
+    int hr = getJsonInt(obj, "\"hr\":");
+    float t = getJsonFloat(obj, "\"t\":");
+    float h = getJsonFloat(obj, "\"h\":");
+
+    if (hr >= 0 && hr < 24) {
+      history[hr].hour = hr;
+      history[hr].avgTemp = t;
+      history[hr].avgHum = h;
+      history[hr].active = true;
+    }
+
+    pos = end + 1;
+  }
+}
+
 void setup() {
   delay(1000);
   Serial.begin(115200);
   Serial1.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed");
+  } else {
+    loadHistory();
+  }
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -99,13 +201,32 @@ void loop() {
         int currentHour = timeinfo.tm_hour;
         int currentDay = timeinfo.tm_yday;
 
+        if (lastDay == -1) {
+          lastDay = currentDay;
+
+          if (savedHistoryDay != -1 && savedHistoryDay != currentDay) {
+            clearHistory();
+            saveHistory(currentDay);
+          }
+        }
+
         // Reset 24-hour history at 00:00 once per new day
         if (currentHour == 0 && currentDay != lastDay) {
-          for (int i = 0; i < 24; i++) {
-            history[i].avgTemp = 0;
-            history[i].avgHum = 0;
-            history[i].hour = -1;
-            history[i].active = false;
+          clearHistory();
+
+          currentHourSumT = 0;
+          currentHourSumH = 0;
+          readingCount = 0;
+          lastHour = currentHour;
+          lastDay = currentDay;
+
+          saveHistory(currentDay);
+        }
+
+        // If it's a brand new hour, save the previous hour and reset counters
+        if (currentHour != lastHour) {
+          if (lastHour != -1) {
+            saveHistory(currentDay);
           }
 
           currentHourSumT = 0;
@@ -114,22 +235,10 @@ void loop() {
           lastHour = currentHour;
         }
 
-        lastDay = currentDay;
-
-        // If it's a brand new hour, reset the counters
-        if (currentHour != lastHour) {
-          currentHourSumT = 0;
-          currentHourSumH = 0;
-          readingCount = 0;
-          lastHour = currentHour;
-        }
-
-        // Add to the running totals
         currentHourSumT += temp.toFloat();
         currentHourSumH += hum.toFloat();
         readingCount++;
 
-        // Update the current hour average
         history[currentHour].avgTemp = currentHourSumT / readingCount;
         history[currentHour].avgHum = currentHourSumH / readingCount;
         history[currentHour].hour = currentHour;
