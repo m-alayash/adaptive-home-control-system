@@ -23,13 +23,20 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         }
         .status-grid .card { width: 220px; min-height: 150px; }
         .val { font-size: 40px; color: #00d2ff; font-weight: bold; transition: color 0.5s; }
-
-        .subtext {
-            color: #94a3b8;
-            font-size: 13px;
-            margin-top: 8px;
+        .subtext { color: #94a3b8; font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
+        .slider-wrap { margin-top: 12px; }
+        input[type="range"] { width: 100%; accent-color: #00d2ff; }
+        .motor-controls { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+        .motor-controls button {
+            background: #1e293b;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-size: 12px;
         }
-
+        .motor-controls button.active { background: #00d2ff; color: #0f172a; border-color: #00d2ff; font-weight: bold; }
         .chart-box {
             max-width: 700px;
             margin: 20px auto;
@@ -66,6 +73,21 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 <div>MOTION</div>
                 <div class="val" id="m">--</div>
                 <div class="subtext" id="lastMotion">Last: Never</div>
+            </div>
+
+            <div class="card">
+                <div>MOTOR</div>
+                <div class="val" id="p">--</div>%
+                <div class="subtext" id="motorMode">Mode: Dynamic</div>
+                <div class="slider-wrap">
+                    <input id="motorSlider" type="range" min="0" max="100" value="0"
+                           oninput="previewManualPower(this.value)"
+                           onchange="setManualPower(this.value)">
+                    <div class="subtext">Manual: <span id="sliderValue">0</span>%</div>
+                </div>
+                <div class="motor-controls">
+                    <button id="btnDynamic" onclick="setDynamicMode()">Dynamic</button>
+                </div>
             </div>
         </div>
 
@@ -104,43 +126,18 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             data: {
                 labels: lbls,
                 datasets: [
-                    {
-                        label: 'Temp',
-                        borderColor: '#ff4b2b',
-                        backgroundColor: 'rgba(255,75,43,0.15)',
-                        data: tPts,
-                        tension: 0.3,
-                        pointRadius: 0
-                    },
-                    {
-                        label: 'Hum',
-                        borderColor: '#00d2ff',
-                        backgroundColor: 'rgba(0,210,255,0.15)',
-                        data: hPts,
-                        tension: 0.3,
-                        pointRadius: 0
-                    }
+                    { label: 'Temp', borderColor: '#ff4b2b', backgroundColor: 'rgba(255,75,43,0.15)', data: tPts, tension: 0.3, pointRadius: 0 },
+                    { label: 'Hum', borderColor: '#00d2ff', backgroundColor: 'rgba(0,210,255,0.15)', data: hPts, tension: 0.3, pointRadius: 0 }
                 ]
             },
             options: {
                 responsive: true,
                 animation: false,
                 scales: {
-                    x: {
-                        display: true,
-                        ticks: { color: '#cbd5e1', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
-                        grid: { color: '#334155' }
-                    },
-                    y: {
-                        ticks: { color: '#cbd5e1' },
-                        grid: { color: '#334155' }
-                    }
+                    x: { display: true, ticks: { color: '#cbd5e1', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
+                    y: { ticks: { color: '#cbd5e1' }, grid: { color: '#334155' } }
                 },
-                plugins: {
-                    legend: {
-                        labels: { color: 'white' }
-                    }
-                }
+                plugins: { legend: { labels: { color: 'white' } } }
             }
         });
 
@@ -151,15 +148,70 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             return "#3498db";
         }
 
+        function getPowerColor(power) {
+            if (power >= 80) return "#ff4b2b";
+            if (power >= 40) return "#F28C28";
+            if (power > 0) return "#2ecc71";
+            return "#94a3b8";
+        }
+
+        function updateMotorMode(mode) {
+            mode = mode || "AUTO";
+
+            document.getElementById('motorMode').innerHTML =
+                'Mode: ' + (mode === "AUTO" ? "Dynamic" : "Manual");
+
+            document.getElementById('btnDynamic').classList.toggle('active', mode === "AUTO");
+        }
+
+        function previewManualPower(power) {
+            const pVal = parseInt(power);
+
+            document.getElementById('sliderValue').innerHTML = pVal;
+            document.getElementById('p').innerHTML = pVal;
+            document.getElementById('p').style.color = getPowerColor(pVal);
+
+            updateMotorMode("MANUAL");
+        }
+
+        function setManualPower(power) {
+            power = parseInt(power);
+
+            if (isNaN(power)) power = 0;
+            if (power < 0) power = 0;
+            if (power > 100) power = 100;
+
+            fetch('/motor/manual?p=' + power)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok) {
+                        updateMotorMode(d.mode);
+                        document.getElementById('sliderValue').innerHTML = d.p;
+                    }
+                });
+        }
+
+        function setDynamicMode() {
+            fetch('/motor/auto')
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok) updateMotorMode(d.mode);
+                });
+        }
+
         function fetchData() {
             fetch('/data')
                 .then(r => r.json())
                 .then(d => {
                     const tVal = parseFloat(d.t);
                     const hVal = parseFloat(d.h);
+                    const pVal = parseInt(d.p);
+
                     const tElem = document.getElementById('t');
                     const hElem = document.getElementById('h');
                     const mElem = document.getElementById('m');
+                    const pElem = document.getElementById('p');
+                    const slider = document.getElementById('motorSlider');
 
                     tElem.innerHTML = isNaN(tVal) ? "--" : d.t;
                     hElem.innerHTML = isNaN(hVal) ? "--" : d.h;
@@ -175,8 +227,20 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                         mElem.innerHTML = "NO";
                         mElem.style.color = "#2ecc71";
                     }
-                    
+
                     document.getElementById('lastMotion').innerHTML = 'Last: ' + d.lastMotion;
+
+                    pElem.innerHTML = isNaN(pVal) ? "--" : pVal;
+                    if (!isNaN(pVal)) {
+                        pElem.style.color = getPowerColor(pVal);
+
+                        if (document.activeElement !== slider) {
+                            slider.value = pVal;
+                            document.getElementById('sliderValue').innerHTML = pVal;
+                        }
+                    }
+
+                    updateMotorMode(d.mode);
 
                     if (!isNaN(tVal) && !isNaN(hVal)) {
                         if (lbls.length > 20) {

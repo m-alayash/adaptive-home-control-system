@@ -100,18 +100,51 @@ char U0Read(void)
 
 
 void initUART2(void) {
-    // 1. Power on UART2
+    // Power on UART2
     LPC_SC->PCONP |= (1 << 24);
 
-    // 2. Configure P0.10 as TXD2 and P0.11 as RXD2
+    // Force UART2 peripheral clock to CCLK/4.
+    // If CCLK = 100MHz, PCLK_UART2 = 25MHz.
+    LPC_SC->PCLKSEL1 &= ~(3 << 16);
+
+    // Configure P0.10 as TXD2 and P0.11 as RXD2
     LPC_PINCON->PINSEL0 &= ~((3 << 20) | (3 << 22));
     LPC_PINCON->PINSEL0 |=  ((1 << 20) | (1 << 22));
 
-    // 3. Set Baud rate (Assuming 25Mhz PCLK, 9600 Baud)
-    LPC_UART2->LCR = 0x83; // 8 bits, 1 stop, DLAB = 1
-    LPC_UART2->DLL = 163;  // For 9600 Baud
+    // 8-bit, no parity, 1 stop bit, DLAB = 1
+    LPC_UART2->LCR = 0x83;
+
+    // 9600 baud with 25MHz PCLK
+    LPC_UART2->DLL = 163;
     LPC_UART2->DLM = 0;
-    LPC_UART2->LCR = 0x03; // DLAB = 0
+
+    // Explicit fractional divider: MULVAL = 1, DIVADDVAL = 0
+    LPC_UART2->FDR = (1 << 4);
+
+    // DLAB = 0
+    LPC_UART2->LCR = 0x03;
+
+    // Enable and reset FIFOs
+    LPC_UART2->FCR = Ux_FIFO_EN | Rx_FIFO_RST | Tx_FIFO_RST;
+
+    // Enable transmitter
+    LPC_UART2->TER = (1 << 7);
+
+    // Clear any old received garbage
+    while (LPC_UART2->LSR & RDR) {
+        volatile char dummy = LPC_UART2->RBR;
+        (void)dummy;
+    }
+}
+int U2Available(void)
+{
+    return (LPC_UART2->LSR & RDR);
+}
+
+char U2Read(void)
+{
+    while (!(LPC_UART2->LSR & RDR));
+    return LPC_UART2->RBR;
 }
 
 void U2Write(char c) {

@@ -1,39 +1,64 @@
 #include <lpc17xx.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "ocf_lpc176x_lib.h"
 
-#define DATA_PIN (1 << 0)
-#define PIR_PIN (1 << 5)   // P2.5
+#define DATA_PIN (1 << 0)  // P0.0
+#define PIR_PIN  (1 << 5)  // P2.5
 
+#define PWM_PERIOD_TICKS 25000
 
-// Function prototypes
+typedef enum {
+    MOTOR_DYNAMIC = 0,
+    MOTOR_MANUAL
+} MotorMode;
+
+MotorMode motorMode = MOTOR_DYNAMIC;
+int motorPower = 0;
+int manualMotorPower = 0;
+int lastTempC = 0;
+
+char uart2CmdBuffer[32];
+unsigned int uart2CmdIndex = 0;
+
 void DHT11_Start(void);
 int  DHT11_CheckResponse(void);
 int  DHT11_ReadBit(void);
 int  DHT11_ReadByte(unsigned char *byte);
 
-// ================= MAIN =================
+void PWM1_Init(void);
+void PWM1_SetPower(int percent);
+int  GetDynamicCoolingPower(int tempC);
+int  GetMotorPower(int tempC);
+const char* GetMotorModeText(void);
+
+void UART2_ProcessCommands(void);
+void HandleCommand(char *cmd);
+void DelayWithCommandPolling(unsigned int ms);
+
 int main(void)
 {
     unsigned char hum_int, hum_dec, temp_int, temp_dec, checksum;
 
-    // Ensure P0.0 is GPIO
     LPC_PINCON->PINSEL0 &= ~(3 << 0);
 
-    // Ensure P2.5 is GPIO
     LPC_PINCON->PINSEL4 &= ~(3 << 10);
     LPC_GPIO2->FIODIR &= ~PIR_PIN;
 
     initUART0();
     initTimer0();
     initUART2();
+    PWM1_Init();
 
     printf("Readings:\n");
 
-    delayMS(1000); // sensor stabilization
+    delayMS(1000);
 
     while(1)
     {
+        UART2_ProcessCommands();
+
         DHT11_Start();
 
         if(DHT11_CheckResponse())
@@ -46,14 +71,18 @@ int main(void)
             {
                 if((unsigned char)(hum_int + hum_dec + temp_int + temp_dec) == checksum)
                 {
-                    // Print to PC Terminal (UART0)
                     int motion = (LPC_GPIO2->FIOPIN & PIR_PIN) ? 1 : 0;
 
-                    printf("Humidity = %d%%  Temp = %d C Motion = %d\n", hum_int, temp_int, motion);
+                    lastTempC = temp_int;
+                    motorPower = GetMotorPower(lastTempC);
+                    PWM1_SetPower(motorPower);
 
-                    // Prepare and send data to ESP32 (UART2)
-                    char esp_buffer[32];
-                    sprintf(esp_buffer, "H:%d,T:%d,M:%d\n", hum_int, temp_int, motion);
+                    printf("Humidity = %d%%  Temp = %d C  Motion = %d  Motor = %d%%  Mode = %s\n",
+                           hum_int, temp_int, motion, motorPower, GetMotorModeText());
+
+                    char esp_buffer[80];
+                    sprintf(esp_buffer, "H:%d,T:%d,M:%d,P:%d,MODE:%s\n",
+                            hum_int, temp_int, motion, motorPower, GetMotorModeText());
                     U2WriteStr(esp_buffer);
                 }
                 else
@@ -74,8 +103,129 @@ int main(void)
             U2WriteStr("ERROR: No Sensor Response\n");
         }
 
-        delayMS(2000);
+        DelayWithCommandPolling(2000);
     }
+}
+
+void PWM1_Init(void)
+{
+    LPC_SC->PCONP |= (1 << 6);
+
+    LPC_PINCON->PINSEL4 &= ~(3 << 0);
+    LPC_PINCON->PINSEL4 |=  (1 << 0);  // P2.0 = PWM1.1
+
+    LPC_PWM1->TCR = (1 << 1);
+    LPC_PWM1->PR = 0;
+    LPC_PWM1->MR0 = PWM_PERIOD_TICKS;
+    LPC_PWM1->MR1 = 0;
+
+    LPC_PWM1->MCR = (1 << 1);
+    LPC_PWM1->LER = (1 << 0) | (1 << 1);
+    LPC_PWM1->PCR = (1 << 9);
+    LPC_PWM1->TCR = (1 << 0) | (1 << 3);
+}
+
+void PWM1_SetPower(int percent)
+{
+    if(percent < 0) percent = 0;
+    if(percent > 100) percent = 100;
+
+    LPC_PWM1->MR1 = (PWM_PERIOD_TICKS * percent) / 100;
+    LPC_PWM1->LER = (1 << 1);
+}
+
+int GetDynamicCoolingPower(int tempC)
+{
+    if(tempC < 24) return 0;
+    if(tempC < 27) return 35;
+    if(tempC < 30) return 65;
+    return 100;
+}
+
+int GetMotorPower(int tempC)
+{
+    if(motorMode == MOTOR_MANUAL)
+        return manualMotorPower;
+
+    return GetDynamicCoolingPower(tempC);
+}
+
+const char* GetMotorModeText(void)
+{
+    if(motorMode == MOTOR_MANUAL)
+        return "MANUAL";
+
+    return "AUTO";
+}
+
+void UART2_ProcessCommands(void)
+{
+    while(LPC_UART2->LSR & 0x01)
+    {
+        char c = LPC_UART2->RBR;
+
+        if(c == '\n' || c == '\r')
+        {
+            if(uart2CmdIndex > 0)
+            {
+                uart2CmdBuffer[uart2CmdIndex] = '\0';
+                HandleCommand(uart2CmdBuffer);
+                uart2CmdIndex = 0;
+            }
+        }
+        else
+        {
+            if(uart2CmdIndex < sizeof(uart2CmdBuffer) - 1)
+                uart2CmdBuffer[uart2CmdIndex++] = c;
+            else
+                uart2CmdIndex = 0;
+        }
+    }
+}
+
+void HandleCommand(char *cmd)
+{
+    printf("Received command: [%s]\n", cmd);
+
+    if(strcmp(cmd, "CMD:AUTO") == 0)
+    {
+        motorMode = MOTOR_DYNAMIC;
+    }
+    else if(strncmp(cmd, "CMD:MANUAL:", 11) == 0)
+    {
+        manualMotorPower = atoi(cmd + 11);
+
+        if(manualMotorPower < 0) manualMotorPower = 0;
+        if(manualMotorPower > 100) manualMotorPower = 100;
+
+        motorMode = MOTOR_MANUAL;
+    }
+    else
+    {
+        return;
+    }
+
+    motorPower = GetMotorPower(lastTempC);
+    PWM1_SetPower(motorPower);
+
+    printf("Motor command: %s, power = %d%%\n", GetMotorModeText(), motorPower);
+
+    char reply[40];
+    sprintf(reply, "P:%d,MODE:%s\n", motorPower, GetMotorModeText());
+    U2WriteStr(reply);
+}
+
+void DelayWithCommandPolling(unsigned int ms)
+{
+    while(ms >= 20)
+    {
+        UART2_ProcessCommands();
+        delayMS(20);
+        ms -= 20;
+    }
+
+    if(ms > 0)
+        delayMS(ms);
 }
 
 void DHT11_Start(void)
@@ -86,7 +236,7 @@ void DHT11_Start(void)
     delayMS(1);
 
     LPC_GPIO0->FIOCLR = DATA_PIN;
-    delayMS(20);   // must be >= 18ms
+    delayMS(20);
 
     LPC_GPIO0->FIOSET = DATA_PIN;
     delayUS(40);
@@ -98,7 +248,6 @@ int DHT11_CheckResponse(void)
 {
     int timeout = 0;
 
-    // Wait for sensor LOW response
     while(LPC_GPIO0->FIOPIN & DATA_PIN)
     {
         delayUS(1);
@@ -107,7 +256,6 @@ int DHT11_CheckResponse(void)
 
     timeout = 0;
 
-    // Wait for sensor HIGH response
     while(!(LPC_GPIO0->FIOPIN & DATA_PIN))
     {
         delayUS(1);
@@ -116,7 +264,6 @@ int DHT11_CheckResponse(void)
 
     timeout = 0;
 
-    // Wait for LOW before data bits
     while(LPC_GPIO0->FIOPIN & DATA_PIN)
     {
         delayUS(1);
@@ -131,14 +278,12 @@ int DHT11_ReadBit(void)
     int timeout = 0;
     unsigned int time = 0;
 
-    // Wait for HIGH pulse to start
     while(!(LPC_GPIO0->FIOPIN & DATA_PIN))
     {
         delayUS(1);
         if(++timeout > 100) return -1;
     }
 
-    // Measure HIGH pulse width
     startTimer0();
 
     while(LPC_GPIO0->FIOPIN & DATA_PIN)
@@ -148,7 +293,6 @@ int DHT11_ReadBit(void)
 
     time = stopTimer0();
 
-    // Around 26-28us = 0, around 70us = 1
     if(time > 40)
         return 1;
     else

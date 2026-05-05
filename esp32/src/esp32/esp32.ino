@@ -8,9 +8,8 @@
 const char* ssid = "HONOR-10AP1K";
 const char* password = "0503844860";
 
-// NTP Settings
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 10800;  // GMT+3 (60*60*3)
+const long gmtOffset_sec = 10800;
 const int daylightOffset_sec = 0;
 
 #define RX_PIN 18
@@ -18,8 +17,8 @@ const int daylightOffset_sec = 0;
 
 WebServer server(80);
 String temp = "0", hum = "0", motion = "0";
+String motorPower = "0", motorMode = "AUTO";
 
-// Logging Variables
 struct HourlyData {
   float avgTemp = 0;
   float avgHum = 0;
@@ -58,6 +57,20 @@ String getField(String line, String key) {
   return clean(line.substring(start, end));
 }
 
+String getTextField(String line, String key) {
+  int start = line.indexOf(key);
+  if (start == -1) return "";
+
+  start += key.length();
+
+  int end = line.indexOf(",", start);
+  if (end == -1) end = line.length();
+
+  String value = line.substring(start, end);
+  value.trim();
+  return value;
+}
+
 void clearHistory() {
   for (int i = 0; i < 24; i++) {
     history[i].avgTemp = 0;
@@ -77,7 +90,6 @@ void saveHistory(int day) {
   file.print(",\"lastMotion\":\"");
   file.print(lastMotionTime);
   file.print("\",\"data\":[");
-
 
   bool first = true;
   for (int i = 0; i < 24; i++) {
@@ -180,6 +192,34 @@ void loadHistory() {
   }
 }
 
+void sendDynamicMode() {
+  Serial.println("Dashboard motor request: AUTO");
+  Serial1.print("CMD:AUTO\n");
+
+  motorMode = "AUTO";
+
+  String json = "{\"ok\":true,\"mode\":\"AUTO\"}";
+  server.send(200, "application/json", json);
+}
+
+void sendManualPower(int power) {
+  if (power < 0) power = 0;
+  if (power > 100) power = 100;
+
+  Serial.print("Dashboard manual motor power: ");
+  Serial.println(power);
+
+  Serial1.print("CMD:MANUAL:");
+  Serial1.print(power);
+  Serial1.print("\n");
+
+  motorMode = "MANUAL";
+  motorPower = String(power);
+
+  String json = "{\"ok\":true,\"mode\":\"MANUAL\",\"p\":\"" + String(power) + "\"}";
+  server.send(200, "application/json", json);
+}
+
 void setup() {
   delay(1000);
   Serial.begin(115200);
@@ -200,12 +240,31 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   server.on("/", []() {
+    server.sendHeader("Cache-Control", "no-store");
     server.send_P(200, "text/html", PAGE_DATA);
   });
 
   server.on("/data", []() {
-    String json = "{\"t\":\"" + clean(temp) + "\",\"h\":\"" + clean(hum) + "\",\"m\":\"" + motion + "\",\"lastMotion\":\"" + lastMotionTime + "\"}";
+    String json = "{\"t\":\"" + clean(temp) +
+                  "\",\"h\":\"" + clean(hum) +
+                  "\",\"m\":\"" + motion +
+                  "\",\"lastMotion\":\"" + lastMotionTime +
+                  "\",\"p\":\"" + clean(motorPower) +
+                  "\",\"mode\":\"" + motorMode + "\"}";
     server.send(200, "application/json", json);
+  });
+
+  server.on("/motor/auto", []() {
+    sendDynamicMode();
+  });
+
+  server.on("/motor/manual", []() {
+    if (!server.hasArg("p")) {
+      server.send(400, "application/json", "{\"ok\":false}");
+      return;
+    }
+
+    sendManualPower(server.arg("p").toInt());
   });
 
   server.on("/history", []() {
@@ -216,7 +275,10 @@ void setup() {
       if (history[i].active) {
         if (!first) json += ",";
 
-        json += "{\"hr\":" + String(history[i].hour) + ",\"t\":" + String(history[i].avgTemp) + ",\"h\":" + String(history[i].avgHum) + ",\"m\":" + String(history[i].motionCount) + "}";
+        json += "{\"hr\":" + String(history[i].hour) +
+                ",\"t\":" + String(history[i].avgTemp) +
+                ",\"h\":" + String(history[i].avgHum) +
+                ",\"m\":" + String(history[i].motionCount) + "}";
 
         first = false;
       }
@@ -239,10 +301,12 @@ void loop() {
     String newHum = getField(line, "H:");
     String newTemp = getField(line, "T:");
     String newMotion = getField(line, "M:");
+    String newPower = getField(line, "P:");
+    String newMode = getTextField(line, "MODE:");
 
-    if (newMotion != "") {
-      motion = newMotion;
-    }
+    if (newMotion != "") motion = newMotion;
+    if (newPower != "") motorPower = newPower;
+    if (newMode != "") motorMode = newMode;
 
     if (newHum != "" && newTemp != "") {
       hum = newHum;
@@ -252,6 +316,7 @@ void loop() {
       if (getLocalTime(&timeinfo)) {
         int currentHour = timeinfo.tm_hour;
         int currentDay = timeinfo.tm_yday;
+        bool saveAfterUpdate = false;
 
         if (lastDay == -1) {
           lastDay = currentDay;
@@ -300,7 +365,7 @@ void loop() {
           strftime(timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S", &timeinfo);
           lastMotionTime = String(timeText);
 
-          saveHistory(currentDay);
+          saveAfterUpdate = true;
         }
 
         lastMotionState = currentMotionState;
@@ -310,6 +375,10 @@ void loop() {
         history[currentHour].motionCount = motionCount;
         history[currentHour].hour = currentHour;
         history[currentHour].active = true;
+
+        if (saveAfterUpdate) {
+          saveHistory(currentDay);
+        }
       }
     }
   }

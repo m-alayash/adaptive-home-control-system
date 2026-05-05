@@ -46,5 +46,6 @@ void startTimer0(void);
 unsigned int stopTimer0(void);
 void delayUS(unsigned int microseconds);
 void delayMS(unsigned int milliseconds);
+int U2Available(void);
 
 #endif
