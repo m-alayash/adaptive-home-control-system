@@ -6,6 +6,7 @@
 
 #define DATA_PIN (1 << 0)  // P0.0
 #define PIR_PIN  (1 << 5)  // P2.5
+#define LED_PIN  (1 << 9)  // P0.9
 
 #define PWM_PERIOD_TICKS 25000
 
@@ -19,6 +20,9 @@ int motorPower = 0;
 int manualMotorPower = 0;
 int lastTempC = 0;
 
+int ledState = 0;
+int lastPirLedState = 0;
+
 char uart2CmdBuffer[32];
 unsigned int uart2CmdIndex = 0;
 
@@ -26,6 +30,9 @@ void DHT11_Start(void);
 int  DHT11_CheckResponse(void);
 int  DHT11_ReadBit(void);
 int  DHT11_ReadByte(unsigned char *byte);
+
+void LED_Init(void);
+void LED_Set(int on);
 
 void PWM1_Init(void);
 void PWM1_SetPower(int percent);
@@ -45,6 +52,8 @@ int main(void)
 
     LPC_PINCON->PINSEL4 &= ~(3 << 10);
     LPC_GPIO2->FIODIR &= ~PIR_PIN;
+
+    LED_Init();
 
     initUART0();
     initTimer0();
@@ -73,16 +82,22 @@ int main(void)
                 {
                     int motion = (LPC_GPIO2->FIOPIN & PIR_PIN) ? 1 : 0;
 
+                    if(motion && !lastPirLedState)
+                    {
+                        LED_Set(1);
+                    }
+                    lastPirLedState = motion;
+
                     lastTempC = temp_int;
                     motorPower = GetMotorPower(lastTempC);
                     PWM1_SetPower(motorPower);
 
-                    printf("Humidity = %d%%  Temp = %d C  Motion = %d  Motor = %d%%  Mode = %s\n",
-                           hum_int, temp_int, motion, motorPower, GetMotorModeText());
+                    printf("Humidity = %d%%  Temp = %d C  Motion = %d  Motor = %d%%  Mode = %s  LED = %d\n",
+                           hum_int, temp_int, motion, motorPower, GetMotorModeText(), ledState);
 
-                    char esp_buffer[80];
-                    sprintf(esp_buffer, "H:%d,T:%d,M:%d,P:%d,MODE:%s\n",
-                            hum_int, temp_int, motion, motorPower, GetMotorModeText());
+                    char esp_buffer[96];
+                    sprintf(esp_buffer, "H:%d,T:%d,M:%d,P:%d,L:%d,MODE:%s\n",
+                            hum_int, temp_int, motion, motorPower, ledState, GetMotorModeText());
                     U2WriteStr(esp_buffer);
                 }
                 else
@@ -107,12 +122,33 @@ int main(void)
     }
 }
 
+void LED_Init(void)
+{
+    LPC_PINCON->PINSEL0 &= ~(3 << 18);
+    LPC_GPIO0->FIODIR |= LED_PIN;
+    LED_Set(0);
+}
+
+void LED_Set(int on)
+{
+    if(on)
+    {
+        LPC_GPIO0->FIOSET = LED_PIN;
+        ledState = 1;
+    }
+    else
+    {
+        LPC_GPIO0->FIOCLR = LED_PIN;
+        ledState = 0;
+    }
+}
+
 void PWM1_Init(void)
 {
     LPC_SC->PCONP |= (1 << 6);
 
     LPC_PINCON->PINSEL4 &= ~(3 << 0);
-    LPC_PINCON->PINSEL4 |=  (1 << 0);  // P2.0 = PWM1.1
+    LPC_PINCON->PINSEL4 |=  (1 << 0);
 
     LPC_PWM1->TCR = (1 << 1);
     LPC_PWM1->PR = 0;
@@ -200,6 +236,14 @@ void HandleCommand(char *cmd)
 
         motorMode = MOTOR_MANUAL;
     }
+    else if(strcmp(cmd, "CMD:LED:ON") == 0)
+    {
+        LED_Set(1);
+    }
+    else if(strcmp(cmd, "CMD:LED:OFF") == 0)
+    {
+        LED_Set(0);
+    }
     else
     {
         return;
@@ -208,10 +252,11 @@ void HandleCommand(char *cmd)
     motorPower = GetMotorPower(lastTempC);
     PWM1_SetPower(motorPower);
 
-    printf("Motor command: %s, power = %d%%\n", GetMotorModeText(), motorPower);
+    printf("Command state: Motor = %d%%  Mode = %s  LED = %d\n",
+           motorPower, GetMotorModeText(), ledState);
 
-    char reply[40];
-    sprintf(reply, "P:%d,MODE:%s\n", motorPower, GetMotorModeText());
+    char reply[60];
+    sprintf(reply, "P:%d,L:%d,MODE:%s\n", motorPower, ledState, GetMotorModeText());
     U2WriteStr(reply);
 }
 

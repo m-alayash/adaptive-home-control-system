@@ -7,51 +7,144 @@ const char PAGE_DATA[] PROGMEM = R"=====(
     <title>Adaptive Home</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background: #0f172a; color: white; font-family: sans-serif; text-align: center; margin: 0; }
-        .container { padding: 20px; }
-        .status-grid { display: flex; justify-content: center; align-items: stretch; gap: 20px; flex-wrap: wrap; margin: 20px 0; }
-        .card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 15px;
-            padding: 20px;
-            display: inline-block;
-            margin: 10px;
-            min-width: 160px;
-            max-width: 100%;
-            box-sizing: border-box;
-            border: 1px solid #334155;
+        * { box-sizing: border-box; }
+        body {
+            background: #0b1120;
+            color: #f8fafc;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
         }
-        .status-grid .card { width: 220px; min-height: 150px; }
-        .val { font-size: 40px; color: #00d2ff; font-weight: bold; transition: color 0.5s; }
-        .subtext { color: #94a3b8; font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
-        .slider-wrap { margin-top: 12px; }
-        input[type="range"] { width: 100%; accent-color: #00d2ff; }
-        .motor-controls { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .motor-controls button {
-            background: #1e293b;
+        .container {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            padding: clamp(16px, 3vw, 32px);
+        }
+        h1 {
+            margin: 8px 0 20px;
+            font-size: clamp(30px, 5vw, 56px);
+            line-height: 1.05;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px;
+            margin: 20px auto 24px;
+        }
+        .card {
+            background: #182234;
+            border-radius: 14px;
+            padding: 18px;
+            min-width: 0;
+            border: 1px solid #334155;
+            box-shadow: 0 14px 30px rgba(0,0,0,0.18);
+        }
+        .label {
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+        .val {
+            font-size: clamp(34px, 6vw, 48px);
+            color: #00d2ff;
+            font-weight: bold;
+            line-height: 1.1;
+            margin-top: 8px;
+            transition: color 0.25s;
+        }
+        .unit { color: #e2e8f0; font-size: 18px; font-weight: bold; }
+        .subtext {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-top: 8px;
+            overflow-wrap: anywhere;
+        }
+        .slider-wrap { margin-top: 14px; }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #00d2ff;
+        }
+        .control-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .control-row button {
+            background: #0f172a;
             color: #cbd5e1;
             border: 1px solid #475569;
-            border-radius: 8px;
-            padding: 7px 10px;
+            border-radius: 10px;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 13px;
+            min-width: 74px;
         }
-        .motor-controls button.active { background: #00d2ff; color: #0f172a; border-color: #00d2ff; font-weight: bold; }
+        .control-row button.active {
+            background: #00d2ff;
+            color: #07111f;
+            border-color: #00d2ff;
+            font-weight: bold;
+        }
+        .control-row button.off.active {
+            background: #64748b;
+            color: white;
+            border-color: #64748b;
+        }
         .chart-box {
-            max-width: 700px;
+            max-width: 1000px;
+            height: clamp(270px, 44vw, 420px);
             margin: 20px auto;
-            background: rgba(0,0,0,0.2);
-            padding: 15px;
-            border-radius: 15px;
+            background: #090f1f;
+            padding: 16px;
+            border-radius: 16px;
             border: 1px solid #334155;
-            box-sizing: border-box;
         }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { color: #94a3b8; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #334155; }
-        td { padding: 10px; border-bottom: 1px solid #1e293b; }
-        .log-container { max-width: 700px; margin: 20px auto; }
-        .history-card { width: 100%; display: block; }
+        .chart-box canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .log-container {
+            max-width: 1000px;
+            margin: 24px auto 0;
+        }
+        .log-container h3 {
+            font-size: clamp(20px, 4vw, 30px);
+            margin: 0 0 14px;
+        }
+        .history-card {
+            padding: 16px;
+        }
+        .table-scroll {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            min-width: 520px;
+            border-collapse: collapse;
+        }
+        th {
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            padding: 12px 10px;
+            border-bottom: 1px solid #334155;
+        }
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #1e293b;
+        }
         .empty-row { color: #94a3b8; }
+
+        @media (max-width: 520px) {
+            .status-grid { grid-template-columns: 1fr; }
+            .card { padding: 16px; }
+            .control-row button { flex: 1; }
+            .chart-box { padding: 10px; }
+        }
     </style>
 </head>
 <body>
@@ -60,33 +153,48 @@ const char PAGE_DATA[] PROGMEM = R"=====(
 
         <div class="status-grid">
             <div class="card">
-                <div>TEMPERATURE</div>
-                <div class="val" id="t">--</div>&deg;C
+                <div class="label">Temperature</div>
+                <div class="val" id="t">--</div>
+                <div class="unit">&deg;C</div>
             </div>
 
             <div class="card">
-                <div>HUMIDITY</div>
-                <div class="val" id="h">--</div>%
+                <div class="label">Humidity</div>
+                <div class="val" id="h">--</div>
+                <div class="unit">%</div>
             </div>
 
             <div class="card">
-                <div>MOTION</div>
+                <div class="label">Motion</div>
                 <div class="val" id="m">--</div>
                 <div class="subtext" id="lastMotion">Last: Never</div>
             </div>
 
             <div class="card">
-                <div>MOTOR</div>
-                <div class="val" id="p">--</div>%
+                <div class="label">Motor</div>
+                <div class="val" id="p">--</div>
+                <div class="unit">%</div>
                 <div class="subtext" id="motorMode">Mode: Dynamic</div>
+
                 <div class="slider-wrap">
                     <input id="motorSlider" type="range" min="0" max="100" value="0"
                            oninput="previewManualPower(this.value)"
                            onchange="setManualPower(this.value)">
                     <div class="subtext">Manual: <span id="sliderValue">0</span>%</div>
                 </div>
-                <div class="motor-controls">
+
+                <div class="control-row">
                     <button id="btnDynamic" onclick="setDynamicMode()">Dynamic</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="label">LED</div>
+                <div class="val" id="led">--</div>
+                <div class="subtext" id="ledText">Status: --</div>
+                <div class="control-row">
+                    <button id="btnLedOff" class="off" onclick="setLed(0)">Off</button>
+                    <button id="btnLedOn" onclick="setLed(1)">On</button>
                 </div>
             </div>
         </div>
@@ -98,21 +206,23 @@ const char PAGE_DATA[] PROGMEM = R"=====(
         <div class="log-container">
             <h3>24-HOUR HISTORY (HOURLY AVG)</h3>
             <div class="card history-card">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Hour</th>
-                            <th>Temp</th>
-                            <th>Humidity</th>
-                            <th>Motion</th>
-                        </tr>
-                    </thead>
-                    <tbody id="logBody">
-                        <tr>
-                            <td colspan="4" class="empty-row">No history yet</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Hour</th>
+                                <th>Temp</th>
+                                <th>Humidity</th>
+                                <th>Motion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logBody">
+                            <tr>
+                                <td colspan="4" class="empty-row">No history yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -132,6 +242,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 animation: false,
                 scales: {
                     x: { display: true, ticks: { color: '#cbd5e1', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
@@ -162,6 +273,20 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 'Mode: ' + (mode === "AUTO" ? "Dynamic" : "Manual");
 
             document.getElementById('btnDynamic').classList.toggle('active', mode === "AUTO");
+        }
+
+        function updateLedState(state) {
+            const on = state === "1" || state === 1 || state === true;
+            const ledElem = document.getElementById('led');
+
+            ledElem.innerHTML = on ? "ON" : "OFF";
+            ledElem.style.color = on ? "#facc15" : "#94a3b8";
+
+            document.getElementById('ledText').innerHTML =
+                on ? "Status: Active" : "Status: Off";
+
+            document.getElementById('btnLedOn').classList.toggle('active', on);
+            document.getElementById('btnLedOff').classList.toggle('active', !on);
         }
 
         function previewManualPower(power) {
@@ -196,6 +321,16 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                 .then(r => r.json())
                 .then(d => {
                     if (d.ok) updateMotorMode(d.mode);
+                });
+        }
+
+        function setLed(on) {
+            const path = on ? '/led/on' : '/led/off';
+
+            fetch(path)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok) updateLedState(d.led);
                 });
         }
 
@@ -241,6 +376,7 @@ const char PAGE_DATA[] PROGMEM = R"=====(
                     }
 
                     updateMotorMode(d.mode);
+                    updateLedState(d.led);
 
                     if (!isNaN(tVal) && !isNaN(hVal)) {
                         if (lbls.length > 20) {

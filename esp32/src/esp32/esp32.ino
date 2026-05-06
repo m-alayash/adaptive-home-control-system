@@ -18,6 +18,7 @@ const int daylightOffset_sec = 0;
 WebServer server(80);
 String temp = "0", hum = "0", motion = "0";
 String motorPower = "0", motorMode = "AUTO";
+String ledState = "0";
 
 struct HourlyData {
   float avgTemp = 0;
@@ -220,6 +221,21 @@ void sendManualPower(int power) {
   server.send(200, "application/json", json);
 }
 
+void sendLedState(int on) {
+  if (on) {
+    Serial.println("Dashboard LED request: ON");
+    Serial1.print("CMD:LED:ON\n");
+    ledState = "1";
+  } else {
+    Serial.println("Dashboard LED request: OFF");
+    Serial1.print("CMD:LED:OFF\n");
+    ledState = "0";
+  }
+
+  String json = "{\"ok\":true,\"led\":\"" + ledState + "\"}";
+  server.send(200, "application/json", json);
+}
+
 void setup() {
   delay(1000);
   Serial.begin(115200);
@@ -250,7 +266,8 @@ void setup() {
                   "\",\"m\":\"" + motion +
                   "\",\"lastMotion\":\"" + lastMotionTime +
                   "\",\"p\":\"" + clean(motorPower) +
-                  "\",\"mode\":\"" + motorMode + "\"}";
+                  "\",\"mode\":\"" + motorMode +
+                  "\",\"led\":\"" + ledState + "\"}";
     server.send(200, "application/json", json);
   });
 
@@ -265,6 +282,14 @@ void setup() {
     }
 
     sendManualPower(server.arg("p").toInt());
+  });
+
+  server.on("/led/on", []() {
+    sendLedState(1);
+  });
+
+  server.on("/led/off", []() {
+    sendLedState(0);
   });
 
   server.on("/history", []() {
@@ -302,10 +327,12 @@ void loop() {
     String newTemp = getField(line, "T:");
     String newMotion = getField(line, "M:");
     String newPower = getField(line, "P:");
+    String newLed = getField(line, "L:");
     String newMode = getTextField(line, "MODE:");
 
     if (newMotion != "") motion = newMotion;
     if (newPower != "") motorPower = newPower;
+    if (newLed != "") ledState = newLed;
     if (newMode != "") motorMode = newMode;
 
     if (newHum != "" && newTemp != "") {
