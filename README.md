@@ -1,11 +1,15 @@
 # Adaptive Home
 
 ## Boards
-- ESP32 (Cloud + Web Dashboard)
-- LPC1768 (Control logic)
+- ESP32 (Web Dashboard)
+- LPC1768 (Sensors/Actuators)
 
 ## Features
 - Displays temperature and humidity in real-time
+- Displays whether motion is detected or not
+- Logs the hourly averages of temperature and humidity and motion count
+- Features 2 fan modes, dynamic and manual override
+- LED control
 
 ## Setup
 Instructions coming soon
